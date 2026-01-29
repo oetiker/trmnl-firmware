@@ -21,6 +21,7 @@ struct ApiSetupResponse
   String friendly_id;
   String image_url;
   String message;
+  String auth_mode;  // "api_key" or "ed25519"
 };
 
 struct ApiSetupInputs
@@ -56,6 +57,9 @@ struct ApiDisplayResponse
   String touchbar_mode;
 };
 
+// Forward declaration for auth support
+struct DeviceIdentity;
+
 struct ApiDisplayInputs
 {
   String baseUrl;
@@ -86,6 +90,9 @@ struct ApiDisplayInputs
   UsbStatus usbStatus;
   bool imageCached;
   int prevWakeTime;
+  // Ed25519 authentication (optional)
+  String authMode;                    // "api_key" or "ed25519"
+  const DeviceIdentity *identity;     // Device identity for Ed25519 auth (can be nullptr)
 };
 
 struct ApiLogInputs

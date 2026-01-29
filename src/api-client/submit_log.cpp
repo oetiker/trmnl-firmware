@@ -7,11 +7,15 @@
 #include <device_id.h>
 #include <api_request_serialization.h>
 #include <api-client/request_headers.h>
+#include <api-client/ed25519_headers.h>
 
 bool submitLogToApi(LogApiInput &input, const char *api_url)
 {
   String payload = serializeApiLogRequest(input.log_buffer);
   Log_info("[HTTPS] begin /api/log ...");
+
+  // Pre-compute auth headers BEFORE withHttp to avoid nested HTTP connections
+  auto ed25519Auth = computeEd25519Headers(input.authMode, input.identity, String(api_url));
 
   char new_url[200];
   strcpy(new_url, api_url);
@@ -31,6 +35,8 @@ bool submitLogToApi(LogApiInput &input, const char *api_url)
 
                     applyHeaders(https, buildLogHeaders({device_mac_address(), input.api_key}));
 
+                    addEd25519Headers(https, ed25519Auth);
+
                     https.setTimeout(15000);
                     https.setConnectTimeout(15000);
 
@@ -47,11 +53,12 @@ bool submitLogToApi(LogApiInput &input, const char *api_url)
                       https.begin(redirectUrl);
                       https.setReuse(false);
                       applyHeaders(https, buildLogHeaders({device_mac_address(), input.api_key}));
+                      addEd25519Headers(https, ed25519Auth);
 
                       https.setTimeout(15000);
                       https.setConnectTimeout(15000);
                       httpCode = https.POST(payload);
-                    }   
+                    }
 
                     // httpCode will be negative on error
                     if (httpCode < 0)
@@ -59,8 +66,8 @@ bool submitLogToApi(LogApiInput &input, const char *api_url)
                       Log_error("[HTTPS] POST... failed, error: %d %s", httpCode, https.errorToString(httpCode).c_str());
                       return false;
                     }
-                    else if (httpCode != HTTP_CODE_OK && 
-                             httpCode != HTTP_CODE_MOVED_PERMANENTLY && 
+                    else if (httpCode != HTTP_CODE_OK &&
+                             httpCode != HTTP_CODE_MOVED_PERMANENTLY &&
                              httpCode != HTTP_CODE_NO_CONTENT)
                     {
                       Log_error("[HTTPS] POST... failed, returned HTTP code unknown: %d %s", httpCode, https.errorToString(httpCode).c_str());

@@ -7,6 +7,7 @@
 #include <api_response_parsing.h>
 #include <http_client.h>
 #include <DEV_Config.h>
+#include <api-client/ed25519_headers.h>
 extern RTC_DATA_ATTR int iPrevWakeTime; // total wake time of the last cycle (for statistics collection)
 extern RTC_DATA_ATTR bool bUsedCachedImage; // if the last image displayed was read from cache (for statistics collection)
 #ifdef SENSOR_SDA
@@ -15,7 +16,7 @@ const char *szDevices[] = {"None", "AHT20", "BMP180", "BME280", "BMP388", "SHT3X
 const char *szMakers[] = {"None", "ASAIR", "Bosch", "Bosch", "Bosch", "Sensirion", "TI", "STMicro","MicroChip","Bosch","Sensirion"};
 #endif // SENSOR_SDA
 
-void addHeaders(HTTPClient &https, ApiDisplayInputs &inputs)
+void addHeaders(HTTPClient &https, ApiDisplayInputs &inputs, const Ed25519Headers &auth)
 {
   HttpHeaderList headers = buildDisplayHeaders(inputs);
 
@@ -56,14 +57,20 @@ void addHeaders(HTTPClient &https, ApiDisplayInputs &inputs)
 
   applyHeaders(https, headers);
   logHeaders(headers);
+
+  addEd25519Headers(https, auth);
 }
 
 ApiDisplayResult fetchApiDisplay(ApiDisplayInputs &apiDisplayInputs)
 {
+  // Pre-compute auth headers BEFORE withHttp to avoid nested HTTP connections
+  auto ed25519Auth = computeEd25519Headers(apiDisplayInputs.authMode,
+                                           apiDisplayInputs.identity,
+                                           apiDisplayInputs.baseUrl);
 
   return withHttp(
       apiDisplayInputs.baseUrl + "/api/display",
-      [&apiDisplayInputs](HTTPClient *https, HttpError error) -> ApiDisplayResult
+      [&apiDisplayInputs, &ed25519Auth](HTTPClient *https, HttpError error) -> ApiDisplayResult
       {
         if (error == HttpError::HTTPCLIENT_WIFICLIENT_ERROR)
         {
@@ -87,7 +94,7 @@ ApiDisplayResult fetchApiDisplay(ApiDisplayInputs &apiDisplayInputs)
         https->setTimeout(15000);
         https->setConnectTimeout(15000);
 
-        addHeaders(*https, apiDisplayInputs);
+        addHeaders(*https, apiDisplayInputs, ed25519Auth);
 
         delay(5);
 
@@ -103,7 +110,7 @@ ApiDisplayResult fetchApiDisplay(ApiDisplayInputs &apiDisplayInputs)
               Log_info("Redirected to: %s", redirectUrl.c_str());
               https->setTimeout(15000);
               https->setConnectTimeout(15000);
-              addHeaders(*https, apiDisplayInputs);
+              addHeaders(*https, apiDisplayInputs, ed25519Auth);
               httpCode = https->GET();
             }
 
